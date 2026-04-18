@@ -42,15 +42,31 @@
 
 ## Branching
 - NEVER commit directly to `main`. All work on feature branches
-- Branch naming: `feat/<name>`, `fix/<name>`, `chore/<name>`, `docs/<name>`
+- Branch naming: `feat/<name>`, `fix/<name>`, `chore/<name>`, `docs/<name>`, `meta/<name>`, `archive/<name>`
 - Branches start from upstream main: `git checkout main && git fetch origin && git reset --hard origin/main`
 - Keep commits atomic: one logical change per commit
 - Small, focused commits. One feature per commit
 
+### Fork Branch Topology (ab 2026-04-18)
+Fork `lfl1337/codeburn` Default-Branch ist `dev`, NICHT `main`. Topologie:
+- `main` — read-only Mirror von `AgentSeal/codeburn:main`. Nur via GitHub "Sync fork"-Button aktualisiert. NIE direkt modifizieren. Dient ausschließlich als Verzweigungspunkt für Feature-Branches und als PR-Target-Basis.
+- `feat/*`, `fix/*`, `chore/*`, `docs/*` — atomare PR-Kandidaten. Jeweils ein PR an AgentSeal. Verzweigen von `main`.
+- `meta/fork-docs` — Fork-spezifische Files (FORK.md, Workflow-YAMLs für Fork-Infra). NIE als PR-Source für upstream.
+- `dev` — rolling Integration aller offenen `feat/*`, `fix/*`, `chore/*`, `docs/*` + `meta/fork-docs`. Force-push zulässig (nur auf Fork). Default-Branch, User-facing README. Unstable, "use at own risk".
+- `dev-YYYY-MM-DD` — immutable Datums-Snapshots aus `dev` für reproduzierbares Testen.
+- `archive/*` — abgeschlossene oder deprecated Branches, read-only.
+
+### Fork vs Upstream — Merke
+- PRs an upstream kommen IMMER von atomaren Feature-Branches (`feat/xyz`), NIE von `dev`, NIE von `main`.
+- `dev` ist reines Fork-Konstrukt — upstream sieht es nie.
+- Bei Upstream-Sync: `main` auf GitHub syncen (Button-Click oder `gh repo sync`), danach optional `dev` rebuilden (frisch aus `main` + alle offenen Feature-Branches mergen, force-push).
+
 ## Push / PR Workflow
-- **Pushes and PRs require explicit Ninym approval every time.** No autonomous push, no autonomous PR.
-- Push to the fork only: `git push fork <branch>` (never to `origin` which is AgentSeal)
-- PRs to upstream: `gh pr create --repo AgentSeal/codeburn --head lfl1337:<branch>`
+- **Pushes und PRs Richtung `AgentSeal/codeburn` (`origin`) brauchen IMMER explizite Ninym-Freigabe.** Kein autonomer Upstream-Push, keine autonome PR-Erstellung gegen AgentSeal.
+- **Fork-interne Operationen (`git push fork <branch>`, Branch-Create/Delete/Rename auf Fork, Force-Push auf `dev`) dürfen ohne Einzelfreigabe erfolgen** wenn sie durch Ninym beauftragt sind. Blanket-Approval für Fork-Ops ist erteilt.
+- Push zum Fork: `git push fork <branch>` (nie zu `origin` = AgentSeal)
+- Force-Push nur auf `dev` und `archive/*`, nie auf `feat/*`, `fix/*`, `chore/*`, `docs/*` (würde PRs brechen)
+- PRs zu upstream: `gh pr create --repo AgentSeal/codeburn --head lfl1337:<branch>`
 - Wait for PR body approval before calling `gh pr create`
 
 ## What Gets Committed
