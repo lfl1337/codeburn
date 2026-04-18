@@ -1,0 +1,84 @@
+name: Rebuild dev
+
+# Rebuilds the fork's `dev` branch from `main` plus every open `feat/*`, `fix/*`,
+# `chore/*`, `docs/*` branch and `meta/fork-docs`. Manual trigger only so you
+# control when the integration snapshot changes.
+#
+# Runs only on the fork. If this workflow accidentally ends up in an upstream PR,
+# upstream can delete it without impact — it doesn't modify any upstream-relevant
+# files when triggered there.
+
+on:
+  workflow_dispatch:
+    inputs:
+      tag_snapshot:
+        description: 'Also tag dev-YYYY-MM-DD snapshot after rebuild'
+        required: false
+        default: 'true'
+        type: choice
+        options:
+          - 'true'
+          - 'false'
+
+permissions:
+  contents: write
+
+jobs:
+  rebuild:
+    if: github.repository == 'lfl1337/codeburn'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout main
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          ref: main
+
+      - name: Configure git identity
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+      - name: Detect open branches
+        id: detect
+        run: |
+          git fetch --all --prune
+          mapfile -t branches < <(git branch -r \
+            | grep -E 'origin/(feat|fix|chore|docs|meta)/' \
+            | sed 's@^[[:space:]]*origin/@@' \
+            | sort -u)
+          printf 'Detected branches:\n'
+          printf '  - %s\n' "${branches[@]}"
+          {
+            echo 'branches<<EOF'
+            printf '%s\n' "${branches[@]}"
+            echo 'EOF'
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Build dev
+        run: |
+          git checkout -B dev origin/main
+          while IFS= read -r branch; do
+            [ -z "$branch" ] && continue
+            tip=$(git rev-parse "origin/$branch")
+            if git merge-base --is-ancestor "$tip" origin/main; then
+              echo "Skip $branch (already on main)"
+              continue
+            fi
+            echo "Merge $branch"
+            if ! git merge --no-ff "origin/$branch" -m "merge: $branch"; then
+              echo "::error::Conflict on $branch. Resolve locally, push, rerun."
+              git merge --abort
+              exit 1
+            fi
+          done <<< "${{ steps.detect.outputs.branches }}"
+
+      - name: Push dev
+        run: git push --force-with-lease origin dev
+
+      - name: Tag snapshot
+        if: inputs.tag_snapshot == 'true'
+        run: |
+          snap="dev-$(date -u +%Y-%m-%d)"
+          git tag -f "$snap"
+          git push origin "$snap" --force
