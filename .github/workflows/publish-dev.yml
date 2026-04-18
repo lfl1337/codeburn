@@ -1,0 +1,62 @@
+name: Publish dev to npm
+
+# Publishes the current `dev` branch as `@lfl1337/codeburn-dev` on npm. Manual trigger.
+# Requires the `NPM_TOKEN` repository secret. If the secret is not set, the workflow
+# skips publishing gracefully.
+#
+# Version is appended with `-dev.<unix>` so every run produces a unique version tag
+# on npm without clobbering published tags.
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  publish:
+    if: github.repository == 'lfl1337/codeburn'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Require NPM_TOKEN
+        env:
+          NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
+        run: |
+          if [ -z "$NPM_TOKEN" ]; then
+            echo "::error::NPM_TOKEN secret not set. Add it in repo settings to enable publishing."
+            exit 1
+          fi
+
+      - name: Checkout dev
+        uses: actions/checkout@v4
+        with:
+          ref: dev
+
+      - name: Setup node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          registry-url: 'https://registry.npmjs.org'
+
+      - name: Rename package for scoped publish
+        run: |
+          node <<'NODE'
+          const fs = require('fs')
+          const pkg = JSON.parse(fs.readFileSync('./package.json', 'utf8'))
+          pkg.name = '@lfl1337/codeburn-dev'
+          pkg.version = `${pkg.version}-dev.${Math.floor(Date.now() / 1000)}`
+          pkg.publishConfig = { access: 'public' }
+          fs.writeFileSync('./package.json', JSON.stringify(pkg, null, 2) + '\n')
+          console.log('Publishing as', pkg.name, pkg.version)
+          NODE
+
+      - name: Install
+        run: npm install
+
+      - name: Build
+        run: npm run build
+
+      - name: Publish
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+        run: npm publish
